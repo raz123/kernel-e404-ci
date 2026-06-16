@@ -38,7 +38,7 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf drivers/kernelsu KernelSU
-          git clone https://github.com/rsuntk/KernelSU /tmp/kernelsu && git -C /tmp/kernelsu checkout 4f03066bcce17098759962438404cbd9529396ca
+          git clone --depth=1 https://github.com/rsuntk/KernelSU /tmp/kernelsu
           mkdir -p drivers/kernelsu
           cp -r /tmp/kernelsu/kernel/* drivers/kernelsu/
           [ -d /tmp/kernelsu/uapi ] && mkdir -p drivers/kernelsu/uapi && cp -r /tmp/kernelsu/uapi/* drivers/kernelsu/uapi/ || true
