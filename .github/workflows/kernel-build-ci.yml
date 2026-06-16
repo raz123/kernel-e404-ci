@@ -111,3 +111,49 @@ jobs:
         with:
           name: build-log
           path: /workspace/kernel/build.log
+      - name: Package AnyKernel3
+        working-directory: /workspace
+        run: |
+          set -euo pipefail
+          git clone --depth=1 https://github.com/osm0sis/AnyKernel3 /workspace/AnyKernel3
+          cp /workspace/kernel/arch/arm64/boot/Image.gz-dtb /workspace/AnyKernel3/
+          cat > /workspace/AnyKernel3/anykernel.sh << 'EOF'
+          # AnyKernel3 Ramdisk Mod Script
+          # osm0sis @ xda-developers
+          
+          ## AnyKernel setup
+          kernel.string=UltimateKernel for Poco F3 (alioth)
+          do.devicecheck=1
+          device.name1=alioth
+          device.name2=mars
+          device.name3=venus
+          block=/dev/block/bootdevice/by-name/boot
+          is_slot_device=1
+          ramdisk_compression=auto
+          patch_vbmeta_flag=auto
+          
+          ## AnyKernel file attributes
+          
+          ## import variables
+          . /tmp/anykernel/tools/ak3-core.sh
+          
+          ## boot install
+          split_boot
+          flash_boot
+          
+          ## end install
+          EOF
+          # Verify no dtbo references
+          grep -qi 'dtbo' /workspace/AnyKernel3/anykernel.sh && { echo "ERROR: dtbo detected"; exit 1; }
+          # Package
+          SHORT_SHA=$(cd /workspace/kernel && git rev-parse --short HEAD)
+          cd /workspace/AnyKernel3
+          zip -r9 /workspace/UltimateKernel-alioth-${SHORT_SHA}.zip . -x '*.git*'
+          ls -lh /workspace/UltimateKernel-alioth-${SHORT_SHA}.zip
+
+      - name: Upload flashable ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: UltimateKernel-flashable
+          path: /workspace/UltimateKernel-alioth-*.zip
+          retention-days: 90
