@@ -127,8 +127,8 @@ jobs:
         run: |
           set -euo pipefail
           git clone --depth=1 https://github.com/osm0sis/AnyKernel3 /workspace/AnyKernel3
-          cp /workspace/kernel/arch/arm64/boot/Image.gz-dtb /workspace/AnyKernel3/
-          # Write anykernel.sh (printf avoids YAML heredoc indentation)
+          cp /workspace/kernel/arch/arm64/boot/Image.gz-dtb /workspace/AnyKernel3/Image
+          # Write anykernel.sh matching working kernel format
           printf '%s\n' \
             '# AnyKernel3 Ramdisk Mod Script' \
             '# osm0sis @ xda-developers' \
@@ -136,9 +136,9 @@ jobs:
             '## AnyKernel setup' \
             'kernel.string=UltimateKernel for Poco F3 (alioth)' \
             'do.devicecheck=1' \
+            'do.modules=0' \
             'device.name1=alioth' \
-            'device.name2=mars' \
-            'device.name3=venus' \
+            'device.name2=aliothin' \
             'block=/dev/block/bootdevice/by-name/boot' \
             'is_slot_device=1' \
             'ramdisk_compression=auto' \
@@ -155,16 +155,17 @@ jobs:
             '' \
             '## end install' \
             > /workspace/AnyKernel3/anykernel.sh
+          # Remove any KernelSU/susfs files that might have been pulled in
+          rm -rf /workspace/AnyKernel3/KernelSU /workspace/AnyKernel3/kernelsu /workspace/AnyKernel3/susfs
           grep -qi 'dtbo' /workspace/AnyKernel3/anykernel.sh && { echo "ERROR: dtbo detected"; exit 1; }
           # Build filename
           SHORT_SHA=$(cd /workspace/kernel && git rev-parse --short HEAD)
           BUILD_DATE=$(date +%Y%m%d-%H%M)
           ZIPNAME="UltimateKernel-alioth-${BUILD_DATE}-${SHORT_SHA}"
           cd /workspace/AnyKernel3
-          # CRITICAL: Image.gz-dtb must be STORED (-0), not compressed (-9)
-          # Double-compression produces invalid ZIP format for recoveries
-          zip -0 "/workspace/${ZIPNAME}.zip" Image.gz-dtb
-          zip -r "/workspace/${ZIPNAME}.zip" . -x '*.git*' -x 'Image.gz-dtb'
+          # Image must be STORED (-0), not compressed
+          zip -0 "/workspace/${ZIPNAME}.zip" Image
+          zip -r "/workspace/${ZIPNAME}.zip" . -x '*.git*' -x 'Image'
           ls -lh "/workspace/${ZIPNAME}.zip"
           echo "ZIPNAME=${ZIPNAME}" >> "$GITHUB_ENV"
 
