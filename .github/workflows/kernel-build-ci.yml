@@ -128,7 +128,7 @@ jobs:
           set -euo pipefail
           git clone --depth=1 https://github.com/osm0sis/AnyKernel3 /workspace/AnyKernel3
           cp /workspace/kernel/arch/arm64/boot/Image.gz-dtb /workspace/AnyKernel3/
-          # Write anykernel.sh without indentation (YAML heredocs add leading spaces)
+          # Write anykernel.sh (printf avoids YAML heredoc indentation)
           printf '%s\n' \
             '# AnyKernel3 Ramdisk Mod Script' \
             '# osm0sis @ xda-developers' \
@@ -155,20 +155,22 @@ jobs:
             '' \
             '## end install' \
             > /workspace/AnyKernel3/anykernel.sh
-          # Verify no dtbo references
           grep -qi 'dtbo' /workspace/AnyKernel3/anykernel.sh && { echo "ERROR: dtbo detected"; exit 1; }
-          # Package with date-time in filename
+          # Build filename
           SHORT_SHA=$(cd /workspace/kernel && git rev-parse --short HEAD)
           BUILD_DATE=$(date +%Y%m%d-%H%M)
-          ZIPNAME="UltimateKernel-alioth-${BUILD_DATE}-${SHORT_SHA}.zip"
+          ZIPNAME="UltimateKernel-alioth-${BUILD_DATE}-${SHORT_SHA}"
           cd /workspace/AnyKernel3
-          zip -r9 "/workspace/${ZIPNAME}" . -x '*.git*'
-          ls -lh "/workspace/${ZIPNAME}"
+          # CRITICAL: Image.gz-dtb must be STORED (-0), not compressed (-9)
+          # Double-compression produces invalid ZIP format for recoveries
+          zip -0 "/workspace/${ZIPNAME}.zip" Image.gz-dtb
+          zip -r "/workspace/${ZIPNAME}.zip" . -x '*.git*' -x 'Image.gz-dtb'
+          ls -lh "/workspace/${ZIPNAME}.zip"
           echo "ZIPNAME=${ZIPNAME}" >> "$GITHUB_ENV"
 
       - name: Upload flashable ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: UltimateKernel-flashable
+          name: ${{ env.ZIPNAME }}
           path: /workspace/UltimateKernel-alioth-*.zip
           retention-days: 90
