@@ -21,7 +21,21 @@ jobs:
       - name: Clone E404 kernel
         run: |
           set -euo pipefail
-          git clone --depth=1 https://github.com/raz123/xiaomi_sm8250_kernel_ultimate.git /workspace/kernel
+          # Increase git buffer for large repo
+          git config --global http.postBuffer 524288000
+          git config --global http.lowSpeedLimit 1000
+          git config --global http.lowSpeedTime 600
+          # Retry clone up to 3 times
+          for attempt in 1 2 3; do
+            echo "Clone attempt $attempt..."
+            if git clone --depth=1 https://github.com/raz123/xiaomi_sm8250_kernel_ultimate.git /workspace/kernel; then
+              echo "Clone succeeded"
+              break
+            fi
+            echo "Attempt $attempt failed, retrying..."
+            rm -rf /workspace/kernel
+            sleep 10
+          done
           cd /workspace/kernel
           echo "Kernel version:"
           head -5 Makefile
