@@ -22,26 +22,16 @@ jobs:
         run: |
           set -euo pipefail
           git config --global http.postBuffer 524288000
-          git config --global http.lowSpeedLimit 1000
-          git config --global http.lowSpeedTime 600
           for attempt in 1 2 3; do
             echo "Clone attempt $attempt..."
-            if git clone --depth=1 https://github.com/raz123/xiaomi_sm8250_kernel_ultimate.git /workspace/kernel; then
-              echo "Clone succeeded"
-              break
-            fi
-            rm -rf /workspace/kernel
-            sleep 10
+            if git clone --depth=1 https://github.com/raz123/xiaomi_sm8250_kernel_ultimate.git /workspace/kernel; then break; fi
+            rm -rf /workspace/kernel; sleep 10
           done
-          cd /workspace/kernel
-          head -5 Makefile
+          head -5 /workspace/kernel/Makefile
 
       - name: Verify toolchain
         working-directory: /workspace/kernel
-        run: |
-          clang --version | head -2
-          ld.lld --version
-          aarch64-linux-gnu-gcc --version | head -1 || echo "WARNING: aarch64-linux-gnu-gcc not found"
+        run: clang --version | head -2 && ld.lld --version
 
       - name: Clone ReSukiSU KernelSU
         working-directory: /workspace/kernel
@@ -51,70 +41,52 @@ jobs:
           git clone --depth=1 https://github.com/ReSukiSU/ReSukiSU /tmp/resukisu
           mkdir -p drivers/kernelsu
           cp -r /tmp/resukisu/kernel/* drivers/kernelsu/
-          if [ -d /tmp/resukisu/uapi ]; then
-            mkdir -p drivers/kernelsu/uapi
-            cp -r /tmp/resukisu/uapi/* drivers/kernelsu/uapi/
-          fi
+          [ -d /tmp/resukisu/uapi ] && mkdir -p drivers/kernelsu/uapi && cp -r /tmp/resukisu/uapi/* drivers/kernelsu/uapi/ || true
           rm -rf /tmp/resukisu
-          if [ -f drivers/kernelsu/Kbuild ]; then
-            sed -i '/Can.*find.*submodule/d; /git submodule/d; /Stop\./d' drivers/kernelsu/Kbuild
-          fi
-          for check in drivers/kernelsu/tools/*_check.mk; do
-            [ -f "$check" ] && echo "# Disabled for CI" > "$check"
-          done
+          sed -i '/Can.*find.*submodule/d; /git submodule/d; /Stop\./d' drivers/kernelsu/Kbuild 2>/dev/null || true
+          for f in drivers/kernelsu/tools/*_check.mk; do [ -f "$f" ] && echo "# Disabled" > "$f"; done
           echo "ReSukiSU integrated"
 
-      - name: Patch defconfig for ReSukiSU
+      - name: Patch defconfig
         working-directory: /workspace/kernel
         run: |
           set -euo pipefail
-          DEFCONFIG="arch/arm64/configs/vendor/alioth_defconfig"
-          sed -i '/CONFIG_KALLSYMS/d' "$DEFCONFIG"
-          echo "CONFIG_KALLSYMS=y" >> "$DEFCONFIG"
-          echo "CONFIG_KALLSYMS_ALL=y" >> "$DEFCONFIG"
-          sed -i '/CONFIG_LTO/d; /CONFIG_LTO_CLANG/d; /CONFIG_HAS_LTO_CLANG/d; /CONFIG_ARCH_SUPPORTS_LTO/d' "$DEFCONFIG"
-          echo "CONFIG_LTO_NONE=y" >> "$DEFCONFIG"
+          DEF="arch/arm64/configs/vendor/alioth_defconfig"
+          sed -i '/CONFIG_KALLSYMS/d' "$DEF"
+          echo -e "CONFIG_KALLSYMS=y\nCONFIG_KALLSYMS_ALL=y" >> "$DEF"
+          sed -i '/CONFIG_LTO/d' "$DEF"
+          echo "CONFIG_LTO_NONE=y" >> "$DEF"
 
       - name: Fix camera techpack
         working-directory: /workspace/kernel
         run: |
           set -euo pipefail
-          # Add cam_trace.o to cam_utils/Makefile
-          UTILS_MK="techpack/camera/drivers/cam_utils/Makefile"
-          if [ -f "$UTILS_MK" ] && ! grep -q 'cam_trace\.o' "$UTILS_MK"; then
-            sed -i 's/cam_common_util\.o/cam_common_util.o cam_trace.o/' "$UTILS_MK"
-            echo "Added cam_trace.o"
-          fi
-          # Add self-include path to cam_req_mgr/Makefile
-          REQ_MGR_MK="techpack/camera/drivers/cam_req_mgr/Makefile"
-          if [ -f "$REQ_MGR_MK" ]; then
-            SELF_PATH="-I\$(srctree)/techpack/camera/drivers/cam_req_mgr/"
-            if ! grep -qF 'cam_req_mgr/cam_req_mgr' "$REQ_MGR_MK" 2>/dev/null; then
-              echo "ccflags-y += $SELF_PATH" >> "$REQ_MGR_MK"
-              echo "Added self-include to cam_req_mgr/Makefile"
+          # Fix missing cam_trace.o in cam_utils/Makefile
+          U="techpack/camera/drivers/cam_utils/Makefile"
+          [ -f "$U" ] && ! grep -q cam_trace.o "$U" && sed -i 's/cam_common_util.o/cam_common_util.o cam_trace.o/' "$U"
+          # Fix missing self-include in cam_req_mgr/Makefile
+          R="techpack/camera/drivers/cam_req_mgr/Makefile"
+          [ -f "$R" ] && echo 'ccflags-y += -I$(srctree)/techpack/camera/drivers/cam_req_mgr/' >> "$R"
+          # Sync ALL missing headers from camera-cas (systematic gap in E404)
+          find techpack/camera-cas/drivers -name '*.h' 2>/dev/null | while read src; do
+            dst="techpack/camera/${src#techpack/camera-cas/}"
+            if [ ! -f "$dst" ]; then
+              mkdir -p "$(dirname "$dst")"
+              cp "$src" "$dst"
             fi
-          fi
+          done
+          echo "Camera techpack fixed"
 
       - name: Build kernel
         working-directory: /workspace/kernel
         run: |
           set -euo pipefail
-          make CC=clang LD=ld.lld ARCH=arm64 \
-               CROSS_COMPILE=aarch64-linux-gnu- \
-               HOSTCC=gcc \
-               LLVM=1 \
-               vendor/alioth_defconfig
-          make CC=clang LD=ld.lld ARCH=arm64 \
-               CROSS_COMPILE=aarch64-linux-gnu- \
-               HOSTCC=gcc \
-               LLVM=1 \
-               -j4 2>&1 | tee build.log
+          make CC=clang LD=ld.lld ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- HOSTCC=gcc LLVM=1 vendor/alioth_defconfig
+          make CC=clang LD=ld.lld ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- HOSTCC=gcc LLVM=1 -j4 2>&1 | tee build.log
 
       - name: Post-build checks
         working-directory: /workspace/kernel
-        run: |
-          file out/arch/arm64/boot/Image.gz-dtb
-          ls -lh out/arch/arm64/boot/Image.gz-dtb
+        run: file out/arch/arm64/boot/Image.gz-dtb && ls -lh out/arch/arm64/boot/Image.gz-dtb
 
       - name: Upload kernel image
         uses: actions/upload-artifact@v4
