@@ -33,19 +33,19 @@ jobs:
         working-directory: /workspace/kernel
         run: clang --version | head -2 && ld.lld --version
 
-      - name: Clone ReSukiSU KernelSU
+      - name: Clone KernelSU (rsuntk)
         working-directory: /workspace/kernel
         run: |
           set -euo pipefail
           rm -rf drivers/kernelsu KernelSU
-          git clone --depth=1 https://github.com/ReSukiSU/ReSukiSU /tmp/resukisu
+          git clone --depth=1 https://github.com/rsuntk/KernelSU /tmp/kernelsu
           mkdir -p drivers/kernelsu
-          cp -r /tmp/resukisu/kernel/* drivers/kernelsu/
-          [ -d /tmp/resukisu/uapi ] && mkdir -p drivers/kernelsu/uapi && cp -r /tmp/resukisu/uapi/* drivers/kernelsu/uapi/ || true
-          rm -rf /tmp/resukisu
+          cp -r /tmp/kernelsu/kernel/* drivers/kernelsu/
+          [ -d /tmp/kernelsu/uapi ] && mkdir -p drivers/kernelsu/uapi && cp -r /tmp/kernelsu/uapi/* drivers/kernelsu/uapi/ || true
+          rm -rf /tmp/kernelsu
           sed -i '/Can.*find.*submodule/d; /git submodule/d; /Stop\./d' drivers/kernelsu/Kbuild 2>/dev/null || true
           for f in drivers/kernelsu/tools/*_check.mk; do [ -f "$f" ] && echo "# Disabled" > "$f"; done
-          echo "ReSukiSU integrated"
+          echo "rsuntk/KernelSU integrated"
 
       - name: Patch defconfig
         working-directory: /workspace/kernel
