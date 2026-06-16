@@ -1,0 +1,120 @@
+name: Kernel Build
+
+on:
+  workflow_dispatch:
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: kernel-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: self-hosted
+    container:
+      image: ghcr.io/${{ github.repository_owner }}/kernel-builder:latest
+
+    steps:
+      - name: Clone E404 kernel
+        run: |
+          set -euo pipefail
+          git clone --depth=1 https://github.com/raz123/xiaomi_sm8250_kernel_ultimate.git /workspace/kernel
+          cd /workspace/kernel
+          echo "Kernel version:"
+          head -5 Makefile
+
+      - name: Verify toolchain
+        working-directory: /workspace/kernel
+        run: |
+          echo "=== Compiler ==="
+          clang --version | head -2
+          echo "=== Linker ==="
+          ld.lld --version
+          echo "=== Cross-compiler ==="
+          aarch64-linux-gnu-gcc --version | head -1 || echo "WARNING: aarch64-linux-gnu-gcc not found"
+
+      - name: Clone ReSukiSU KernelSU
+        working-directory: /workspace/kernel
+        run: |
+          set -euo pipefail
+          rm -rf drivers/kernelsu KernelSU
+          git clone --depth=1 https://github.com/ReSukiSU/ReSukiSU /tmp/resukisu
+          mkdir -p drivers/kernelsu
+          cp -r /tmp/resukisu/kernel/* drivers/kernelsu/
+          if [ -d /tmp/resukisu/uapi ]; then
+            mkdir -p drivers/kernelsu/uapi
+            cp -r /tmp/resukisu/uapi/* drivers/kernelsu/uapi/
+          fi
+          rm -rf /tmp/resukisu
+          if [ -f drivers/kernelsu/Kbuild ]; then
+            sed -i '/Can.*find.*submodule/d; /git submodule/d; /Stop\./d' drivers/kernelsu/Kbuild
+          fi
+          for check in drivers/kernelsu/tools/*_check.mk; do
+            if [ -f "$check" ]; then
+              echo "# Disabled for CI" > "$check"
+            fi
+          done
+          echo "ReSukiSU integrated"
+
+      - name: Patch defconfig for ReSukiSU
+        working-directory: /workspace/kernel
+        run: |
+          set -euo pipefail
+          DEFCONFIG="arch/arm64/configs/vendor/alioth_defconfig"
+          sed -i '/CONFIG_KALLSYMS/d' "$DEFCONFIG"
+          echo "CONFIG_KALLSYMS=y" >> "$DEFCONFIG"
+          echo "CONFIG_KALLSYMS_ALL=y" >> "$DEFCONFIG"
+          sed -i '/CONFIG_LTO/d; /CONFIG_LTO_CLANG/d; /CONFIG_HAS_LTO_CLANG/d; /CONFIG_ARCH_SUPPORTS_LTO/d' "$DEFCONFIG"
+          echo "CONFIG_LTO_NONE=y" >> "$DEFCONFIG"
+          echo "Patched $DEFCONFIG"
+
+      - name: Fix camera techpack build
+        working-directory: /workspace/kernel
+        run: |
+          set -euo pipefail
+          # Root cause: cam_utils/Makefile is missing cam_trace.o
+          MAKEFILE="techpack/camera/drivers/cam_utils/Makefile"
+          if [ -f "$MAKEFILE" ] && ! grep -q 'cam_trace\.o' "$MAKEFILE"; then
+            sed -i 's/cam_common_util\.o/cam_common_util.o cam_trace.o/' "$MAKEFILE"
+            echo "Added cam_trace.o to $MAKEFILE"
+          else
+            echo "cam_trace.o already present"
+          fi
+
+      - name: Build kernel
+        working-directory: /workspace/kernel
+        run: |
+          set -euo pipefail
+          make CC=clang LD=ld.lld ARCH=arm64 \
+               CROSS_COMPILE=aarch64-linux-gnu- \
+               HOSTCC=gcc \
+               LLVM=1 \
+               vendor/alioth_defconfig
+          make CC=clang LD=ld.lld ARCH=arm64 \
+               CROSS_COMPILE=aarch64-linux-gnu- \
+               HOSTCC=gcc \
+               LLVM=1 \
+               -j4 2>&1 | tee build.log
+
+      - name: Post-build checks
+        working-directory: /workspace/kernel
+        run: |
+          set -euo pipefail
+          file out/arch/arm64/boot/Image.gz-dtb
+          ls -lh out/arch/arm64/boot/Image.gz-dtb
+
+      - name: Upload kernel image
+        uses: actions/upload-artifact@v4
+        with:
+          name: kernel-image
+          path: /workspace/kernel/out/arch/arm64/boot/Image.gz-dtb
+          retention-days: 90
+
+      - name: Upload build log
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: /workspace/kernel/build.log
