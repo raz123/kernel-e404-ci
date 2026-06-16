@@ -1,0 +1,36 @@
+name: Build Docker Image
+
+on:
+  workflow_dispatch:
+
+jobs:
+  docker:
+    runs-on: self-hosted
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/kernel-builder:latest
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
+
+      - name: Verify image
+        run: |
+          docker run --rm ghcr.io/${{ github.repository_owner }}/kernel-builder:latest \
+            bash -c "clang --version && ld.lld --version && echo 'Image ready'"
