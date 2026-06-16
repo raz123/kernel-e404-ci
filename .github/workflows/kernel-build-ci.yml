@@ -64,15 +64,26 @@ jobs:
           # Fix missing cam_trace.o in cam_utils/Makefile
           U="techpack/camera/drivers/cam_utils/Makefile"
           [ -f "$U" ] && ! grep -q cam_trace.o "$U" && sed -i 's/cam_common_util.o/cam_common_util.o cam_trace.o/' "$U"
-          # Fix missing self-include in cam_req_mgr/Makefile
-          R="techpack/camera/drivers/cam_req_mgr/Makefile"
-          [ -f "$R" ] && echo 'ccflags-y += -I$(srctree)/techpack/camera/drivers/cam_req_mgr/' >> "$R"
-          # Sync ALL missing headers from camera-cas (systematic gap in E404)
-          find techpack/camera-cas/drivers -name '*.h' 2>/dev/null | while read src; do
-            dst="techpack/camera/${src#techpack/camera-cas/}"
-            if [ ! -f "$dst" ]; then
-              mkdir -p "$(dirname "$dst")"
-              cp "$src" "$dst"
+          # Systematic fix: add self-include path to ALL camera subdirectory Makefiles
+          # E404 is missing -I$(srctree)/techpack/camera/drivers/<subdir>/ in many Makefiles
+          CAM_BASE="techpack/camera/drivers"
+          for dir in $(find "$CAM_BASE" -mindepth 1 -maxdepth 1 -type d); do
+            MK="$dir/Makefile"
+            if [ -f "$MK" ]; then
+              SELF="-I\$(srctree)/$dir/"
+              if ! grep -qF "$dir/" "$MK" 2>/dev/null; then
+                echo "ccflags-y += $SELF" >> "$MK"
+              fi
+            fi
+          done
+          # Also fix cam_sensor_module subdirectories
+          for dir in $(find "$CAM_BASE/cam_sensor_module" -mindepth 1 -maxdepth 1 -type d 2>/dev/null); do
+            MK="$dir/Makefile"
+            if [ -f "$MK" ]; then
+              SELF="-I\$(srctree)/$dir/"
+              if ! grep -qF "$dir/" "$MK" 2>/dev/null; then
+                echo "ccflags-y += $SELF" >> "$MK"
+              fi
             fi
           done
           echo "Camera techpack fixed"
