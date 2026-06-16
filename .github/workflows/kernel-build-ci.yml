@@ -97,13 +97,13 @@ jobs:
 
       - name: Post-build checks
         working-directory: /workspace/kernel
-        run: ls -lh out/arch/arm64/boot/Image.gz-dtb && wc -c out/arch/arm64/boot/Image.gz-dtb
+        run: ls -lh arch/arm64/boot/Image.gz-dtb && wc -c arch/arm64/boot/Image.gz-dtb
 
       - name: Upload kernel image
         uses: actions/upload-artifact@v4
         with:
           name: kernel-image
-          path: /workspace/kernel/out/arch/arm64/boot/Image.gz-dtb
+          path: /workspace/kernel/arch/arm64/boot/Image.gz-dtb
           retention-days: 90
 
       - name: Upload build log
