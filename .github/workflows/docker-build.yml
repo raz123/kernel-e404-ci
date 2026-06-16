@@ -3,12 +3,13 @@ name: Build Docker Image
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+  packages: write
+
 jobs:
   docker:
     runs-on: self-hosted
-    permissions:
-      contents: read
-      packages: write
 
     steps:
       - name: Checkout
@@ -27,8 +28,6 @@ jobs:
           context: .
           push: true
           tags: ghcr.io/${{ github.repository_owner }}/kernel-builder:latest
-          cache-from: type=local,src=/tmp/.buildx-cache
-          cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
 
       - name: Verify image
         run: |
