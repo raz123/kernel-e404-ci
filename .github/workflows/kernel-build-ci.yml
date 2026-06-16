@@ -21,33 +21,26 @@ jobs:
       - name: Clone E404 kernel
         run: |
           set -euo pipefail
-          # Increase git buffer for large repo
           git config --global http.postBuffer 524288000
           git config --global http.lowSpeedLimit 1000
           git config --global http.lowSpeedTime 600
-          # Retry clone up to 3 times
           for attempt in 1 2 3; do
             echo "Clone attempt $attempt..."
             if git clone --depth=1 https://github.com/raz123/xiaomi_sm8250_kernel_ultimate.git /workspace/kernel; then
               echo "Clone succeeded"
               break
             fi
-            echo "Attempt $attempt failed, retrying..."
             rm -rf /workspace/kernel
             sleep 10
           done
           cd /workspace/kernel
-          echo "Kernel version:"
           head -5 Makefile
 
       - name: Verify toolchain
         working-directory: /workspace/kernel
         run: |
-          echo "=== Compiler ==="
           clang --version | head -2
-          echo "=== Linker ==="
           ld.lld --version
-          echo "=== Cross-compiler ==="
           aarch64-linux-gnu-gcc --version | head -1 || echo "WARNING: aarch64-linux-gnu-gcc not found"
 
       - name: Clone ReSukiSU KernelSU
@@ -67,9 +60,7 @@ jobs:
             sed -i '/Can.*find.*submodule/d; /git submodule/d; /Stop\./d' drivers/kernelsu/Kbuild
           fi
           for check in drivers/kernelsu/tools/*_check.mk; do
-            if [ -f "$check" ]; then
-              echo "# Disabled for CI" > "$check"
-            fi
+            [ -f "$check" ] && echo "# Disabled for CI" > "$check"
           done
           echo "ReSukiSU integrated"
 
@@ -83,19 +74,25 @@ jobs:
           echo "CONFIG_KALLSYMS_ALL=y" >> "$DEFCONFIG"
           sed -i '/CONFIG_LTO/d; /CONFIG_LTO_CLANG/d; /CONFIG_HAS_LTO_CLANG/d; /CONFIG_ARCH_SUPPORTS_LTO/d' "$DEFCONFIG"
           echo "CONFIG_LTO_NONE=y" >> "$DEFCONFIG"
-          echo "Patched $DEFCONFIG"
 
-      - name: Fix camera techpack build
+      - name: Fix camera techpack
         working-directory: /workspace/kernel
         run: |
           set -euo pipefail
-          # Root cause: cam_utils/Makefile is missing cam_trace.o
-          MAKEFILE="techpack/camera/drivers/cam_utils/Makefile"
-          if [ -f "$MAKEFILE" ] && ! grep -q 'cam_trace\.o' "$MAKEFILE"; then
-            sed -i 's/cam_common_util\.o/cam_common_util.o cam_trace.o/' "$MAKEFILE"
-            echo "Added cam_trace.o to $MAKEFILE"
-          else
-            echo "cam_trace.o already present"
+          # Add cam_trace.o to cam_utils/Makefile
+          UTILS_MK="techpack/camera/drivers/cam_utils/Makefile"
+          if [ -f "$UTILS_MK" ] && ! grep -q 'cam_trace\.o' "$UTILS_MK"; then
+            sed -i 's/cam_common_util\.o/cam_common_util.o cam_trace.o/' "$UTILS_MK"
+            echo "Added cam_trace.o"
+          fi
+          # Add self-include path to cam_req_mgr/Makefile
+          REQ_MGR_MK="techpack/camera/drivers/cam_req_mgr/Makefile"
+          if [ -f "$REQ_MGR_MK" ]; then
+            SELF_PATH="-I\$(srctree)/techpack/camera/drivers/cam_req_mgr/"
+            if ! grep -qF 'cam_req_mgr/cam_req_mgr' "$REQ_MGR_MK" 2>/dev/null; then
+              echo "ccflags-y += $SELF_PATH" >> "$REQ_MGR_MK"
+              echo "Added self-include to cam_req_mgr/Makefile"
+            fi
           fi
 
       - name: Build kernel
@@ -116,7 +113,6 @@ jobs:
       - name: Post-build checks
         working-directory: /workspace/kernel
         run: |
-          set -euo pipefail
           file out/arch/arm64/boot/Image.gz-dtb
           ls -lh out/arch/arm64/boot/Image.gz-dtb
 
