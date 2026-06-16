@@ -117,39 +117,43 @@ jobs:
           set -euo pipefail
           git clone --depth=1 https://github.com/osm0sis/AnyKernel3 /workspace/AnyKernel3
           cp /workspace/kernel/arch/arm64/boot/Image.gz-dtb /workspace/AnyKernel3/
-          cat > /workspace/AnyKernel3/anykernel.sh << 'EOF'
-          # AnyKernel3 Ramdisk Mod Script
-          # osm0sis @ xda-developers
-          
-          ## AnyKernel setup
-          kernel.string=UltimateKernel for Poco F3 (alioth)
-          do.devicecheck=1
-          device.name1=alioth
-          device.name2=mars
-          device.name3=venus
-          block=/dev/block/bootdevice/by-name/boot
-          is_slot_device=1
-          ramdisk_compression=auto
-          patch_vbmeta_flag=auto
-          
-          ## AnyKernel file attributes
-          
-          ## import variables
-          . /tmp/anykernel/tools/ak3-core.sh
-          
-          ## boot install
-          split_boot
-          flash_boot
-          
-          ## end install
-          EOF
+          # Write anykernel.sh without indentation (YAML heredocs add leading spaces)
+          printf '%s\n' \
+            '# AnyKernel3 Ramdisk Mod Script' \
+            '# osm0sis @ xda-developers' \
+            '' \
+            '## AnyKernel setup' \
+            'kernel.string=UltimateKernel for Poco F3 (alioth)' \
+            'do.devicecheck=1' \
+            'device.name1=alioth' \
+            'device.name2=mars' \
+            'device.name3=venus' \
+            'block=/dev/block/bootdevice/by-name/boot' \
+            'is_slot_device=1' \
+            'ramdisk_compression=auto' \
+            'patch_vbmeta_flag=auto' \
+            '' \
+            '## AnyKernel file attributes' \
+            '' \
+            '## import variables' \
+            '. /tmp/anykernel/tools/ak3-core.sh' \
+            '' \
+            '## boot install' \
+            'split_boot' \
+            'flash_boot' \
+            '' \
+            '## end install' \
+            > /workspace/AnyKernel3/anykernel.sh
           # Verify no dtbo references
           grep -qi 'dtbo' /workspace/AnyKernel3/anykernel.sh && { echo "ERROR: dtbo detected"; exit 1; }
-          # Package
+          # Package with date-time in filename
           SHORT_SHA=$(cd /workspace/kernel && git rev-parse --short HEAD)
+          BUILD_DATE=$(date +%Y%m%d-%H%M)
+          ZIPNAME="UltimateKernel-alioth-${BUILD_DATE}-${SHORT_SHA}.zip"
           cd /workspace/AnyKernel3
-          zip -r9 /workspace/UltimateKernel-alioth-${SHORT_SHA}.zip . -x '*.git*'
-          ls -lh /workspace/UltimateKernel-alioth-${SHORT_SHA}.zip
+          zip -r9 "/workspace/${ZIPNAME}" . -x '*.git*'
+          ls -lh "/workspace/${ZIPNAME}"
+          echo "ZIPNAME=${ZIPNAME}" >> "$GITHUB_ENV"
 
       - name: Upload flashable ZIP
         uses: actions/upload-artifact@v4
