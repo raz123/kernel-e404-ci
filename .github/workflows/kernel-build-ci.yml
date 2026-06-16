@@ -97,7 +97,7 @@ jobs:
 
       - name: Post-build checks
         working-directory: /workspace/kernel
-        run: file out/arch/arm64/boot/Image.gz-dtb && ls -lh out/arch/arm64/boot/Image.gz-dtb
+        run: ls -lh out/arch/arm64/boot/Image.gz-dtb && wc -c out/arch/arm64/boot/Image.gz-dtb
 
       - name: Upload kernel image
         uses: actions/upload-artifact@v4
