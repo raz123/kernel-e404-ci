@@ -49,7 +49,7 @@ jobs:
           # Add stubs for missing KernelSU symbols
           STUB_FILE="drivers/kernelsu/kernelsu_stubs.c"
           printf '%s\n' \
-            '#include <linux/kstat.h>' \
+            '#include <linux/fs.h>' \
             'int ksu_handle_newfstat_ret(unsigned int fd, struct kstat *stat) { return 0; }' \
             'int ksu_handle_fstat64_ret(int dfd, struct kstat *stat) { return 0; }' \
             > "$STUB_FILE"
